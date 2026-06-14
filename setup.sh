@@ -61,7 +61,7 @@ echo -e "${GREEN}✅ Dependensi terinstall${NC}"
 # [4/5] Verifikasi token (hanya jika baru diinput)
 echo -e "${YELLOW}[4/5] Verifikasi token...${NC}"
 if [ -n "$BOT_TOKEN" ]; then
-    RESPONSE=$(curl -s "{{https://api.telegram.org/bot${BOT_TOKEN}}}/getMe" || true)
+    RESPONSE=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe" || true)
     if echo "$RESPONSE" | grep -q '"ok":true'; then
         echo -e "${GREEN}✅ Token valid! Bot terhubung ke Telegram.${NC}"
     else
