@@ -344,19 +344,37 @@ async def _do_download(app, user_id, chat_id, key, storage, status_message_id):
             'merge_output_format': 'mp4',
             'quiet': True, 'no_warnings': True,
             'progress_hooks': [progress_hook],
+            'ignore_no_formats_error': True,  # Abaikan jika format tidak ada
         }
 
     def _run_ydl():
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info), info
+            try:
+                info = ydl.extract_info(url, download=True)
+                return ydl.prepare_filename(info), info
+            except Exception as e:
+                # Jika format tidak available, coba dengan format default (best)
+                error_msg = str(e).lower()
+                if "not available" in error_msg or "no format" in error_msg:
+                    print(f"Format fallback triggered: {e}")
+                    opts_fallback = opts.copy()
+                    opts_fallback['format'] = 'best'
+                    ydl_fallback = yt_dlp.YoutubeDL(opts_fallback)
+                    info = ydl_fallback.extract_info(url, download=True)
+                    return ydl_fallback.prepare_filename(info), info
+                raise
 
     try:
         file_path, info = await loop.run_in_executor(None, _run_ydl)
         if quality == "mp3":
             file_path = os.path.splitext(file_path)[0] + ".mp3"
     except Exception as e:
-        await edit(f"❌ Gagal download.\n`{esc(str(e)[:150])}`")
+        error_msg = str(e)
+        # Pesan error yang lebih helpful
+        if "not available" in error_msg.lower() or "no format" in error_msg.lower():
+            await edit("❌ Format yang diminta tidak tersedia.\n💡 Coba kualitas lain atau link lain.")
+        else:
+            await edit(f"❌ Gagal download.\n`{esc(error_msg[:150])}`")
         pending.pop(key, None)
         return
 
