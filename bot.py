@@ -125,12 +125,12 @@ async def upload_to_filebin(file_path: str, bin_name: str) -> str:
         async with httpx.AsyncClient(timeout=300) as client:
             with open(file_path, 'rb') as f:
                 response = await client.post(
-                    f'{{https://filebin.net/{bin_name}}}/{filename}',
+                    f'https://filebin.net/{bin_name}/{filename}',
                     content=f.read(),
                     headers={'Content-Type': 'application/octet-stream'}
                 )
         if response.status_code in (200, 201):
-            return f"{{https://filebin.net/{bin_name}}}"
+            return f"https://filebin.net/{bin_name}"
         return None
     except Exception as e:
         print(f"Filebin error: {e}")
@@ -148,7 +148,7 @@ async def upload_to_gofile(file_path: str) -> str:
             server = server_data['data']['servers'][0]['name']
             with open(file_path, 'rb') as f:
                 upload_resp = await client.post(
-                    f'{{https://{server}}}.gofile.io/uploadFile',
+                    f'https://{server}.gofile.io/uploadFile',
                     files={'file': (os.path.basename(file_path), f)}
                 )
             data = upload_resp.json()
