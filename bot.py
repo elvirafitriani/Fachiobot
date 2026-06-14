@@ -15,6 +15,7 @@ import time
 import json
 import uuid
 import asyncio
+import copy
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -116,6 +117,20 @@ def add_history(user_id: str, filename: str, storage: str, link: str = ""):
     history[user_id] = history[user_id][-30:]  # simpan maksimal 30 terakhir
     save_history(history)
 
+def safe_remove_file(file_path: str, max_retries: int = 3):
+    """Hapus file dengan retry logic (handle Windows lock issues)."""
+    for attempt in range(max_retries):
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return True
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(0.5)  # Wait sebelum retry
+            else:
+                print(f"Warning: Gagal hapus {file_path}: {e}")
+                return False
+
 # ==================== UPLOAD ====================
 async def upload_to_filebin(file_path: str, bin_name: str) -> str:
     """Upload ke Filebin menggunakan PUT method. bin_name unik per file (privasi lebih baik)."""
@@ -142,12 +157,16 @@ async def upload_to_gofile(file_path: str) -> str:
     try:
         import httpx
         async with httpx.AsyncClient(timeout=300) as client:
+            # Baca file content terlebih dahulu
             with open(file_path, 'rb') as f:
-                files = {'file': (os.path.basename(file_path), f)}
-                response = await client.post(
-                    'https://api.gofile.io/uploadFile',
-                    files=files
-                )
+                file_content = f.read()
+            
+            # Upload dengan streaming
+            files = {'file': (os.path.basename(file_path), file_content)}
+            response = await client.post(
+                'https://api.gofile.io/uploadFile',
+                files=files
+            )
             data = response.json()
             if data.get('status') == 'ok':
                 return data['data']['downloadPage']
@@ -344,7 +363,7 @@ async def _do_download(app, user_id, chat_id, key, storage, status_message_id):
             'merge_output_format': 'mp4',
             'quiet': True, 'no_warnings': True,
             'progress_hooks': [progress_hook],
-            'ignore_no_formats_error': True,  # Abaikan jika format tidak ada
+            'ignore_no_formats_error': True,
         }
 
     def _run_ydl():
@@ -353,12 +372,20 @@ async def _do_download(app, user_id, chat_id, key, storage, status_message_id):
                 info = ydl.extract_info(url, download=True)
                 return ydl.prepare_filename(info), info
             except Exception as e:
-                # Jika format tidak available, coba dengan format default (best)
+                # Jika format tidak available, coba dengan format fallback
                 error_msg = str(e).lower()
                 if "not available" in error_msg or "no format" in error_msg:
                     print(f"Format fallback triggered: {e}")
-                    opts_fallback = opts.copy()
-                    opts_fallback['format'] = 'best'
+                    
+                    # Deep copy untuk menghindari side effects
+                    opts_fallback = copy.deepcopy(opts)
+                    
+                    # Fallback format sesuai quality
+                    if quality == "mp3":
+                        opts_fallback['format'] = 'bestaudio/best'  # Audio only untuk MP3
+                    else:
+                        opts_fallback['format'] = 'best'  # Best available untuk video
+                    
                     ydl_fallback = yt_dlp.YoutubeDL(opts_fallback)
                     info = ydl_fallback.extract_info(url, download=True)
                     return ydl_fallback.prepare_filename(info), info
@@ -430,10 +457,8 @@ async def _do_download(app, user_id, chat_id, key, storage, status_message_id):
                 await edit(msg)
                 add_history(user_id, final_title, storage, link)
     finally:
-        try:
-            os.remove(file_path)
-        except Exception:
-            pass
+        # Safe file removal dengan retry logic
+        safe_remove_file(file_path)
         pending.pop(key, None)
 
 # ==================== COMMANDS & MENU ====================
