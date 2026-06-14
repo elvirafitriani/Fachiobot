@@ -118,42 +118,40 @@ def add_history(user_id: str, filename: str, storage: str, link: str = ""):
 
 # ==================== UPLOAD ====================
 async def upload_to_filebin(file_path: str, bin_name: str) -> str:
-    """Upload ke Filebin. bin_name unik per file (privasi lebih baik)."""
+    """Upload ke Filebin menggunakan PUT method. bin_name unik per file (privasi lebih baik)."""
     try:
         import httpx
         filename = os.path.basename(file_path)
         async with httpx.AsyncClient(timeout=300) as client:
             with open(file_path, 'rb') as f:
-                response = await client.post(
+                response = await client.put(
                     f'https://filebin.net/{bin_name}/{filename}',
                     content=f.read(),
                     headers={'Content-Type': 'application/octet-stream'}
                 )
         if response.status_code in (200, 201):
             return f"https://filebin.net/{bin_name}"
+        print(f"Filebin upload failed with status {response.status_code}")
         return None
     except Exception as e:
         print(f"Filebin error: {e}")
         return None
 
 async def upload_to_gofile(file_path: str) -> str:
-    """Upload ke Gofile (guest). Tiap file dapat link unik."""
+    """Upload ke Gofile API v2 (guest). Tiap file dapat link unik."""
     try:
         import httpx
         async with httpx.AsyncClient(timeout=300) as client:
-            server_resp = await client.get('https://api.gofile.io/servers')
-            server_data = server_resp.json()
-            if server_data.get('status') != 'ok':
-                return None
-            server = server_data['data']['servers'][0]['name']
             with open(file_path, 'rb') as f:
-                upload_resp = await client.post(
-                    f'https://{server}.gofile.io/uploadFile',
-                    files={'file': (os.path.basename(file_path), f)}
+                files = {'file': (os.path.basename(file_path), f)}
+                response = await client.post(
+                    'https://api.gofile.io/uploadFile',
+                    files=files
                 )
-            data = upload_resp.json()
+            data = response.json()
             if data.get('status') == 'ok':
                 return data['data']['downloadPage']
+            print(f"Gofile upload failed: {data.get('message', 'Unknown error')}")
         return None
     except Exception as e:
         print(f"Gofile error: {e}")
